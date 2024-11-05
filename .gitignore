@@ -6,3 +6,5 @@ __pycache__/
 !/data/hf_val_data_download.py
 !/data/README.md
 
+/base/results/*
+
