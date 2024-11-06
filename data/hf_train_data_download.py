@@ -18,7 +18,7 @@ for i, example in enumerate(ds['train']):
     caption = example['caption']
     for field in image_fields:
         img = example[field]
-        img_filename = f"image_{i}.png"
+        img_filename = f"{i}.png"
         img_path = os.path.join(base_dir, field, img_filename)
         img.save(img_path)
     # captions_data.append({'Index': i, 'Caption': caption})
