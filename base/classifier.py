@@ -348,17 +348,17 @@ def grad_cam(args):
                 
                 # Convert image for visualization
                 rgb_img = (image.cpu().numpy().squeeze().transpose((1, 2, 0)) * 0.5 + 0.5).clip(0, 1)
-                rgb_img_uint8 = (rgb_img * 255).astype(np.uint8)
-                rgb_img_bgr = cv2.cvtColor(rgb_img_uint8, cv2.COLOR_RGB2BGR)
+                rgb_img_bgr = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2BGR)
+                rgb_img_uint8 = (rgb_img_bgr * 255).astype(np.uint8)
 
                 # Create visualization
-                visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+                visualization = show_cam_on_image(rgb_img_bgr, grayscale_cam, use_rgb=True)
                 
                 # Save visualization and original image
                 output_dir = Path(args.results_path) / 'gradcam' / class_dict[label]
                 output_dir.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(output_dir / f'{idx}.png'), visualization)
-                cv2.imwrite(str(output_dir / f'{idx}_original.png'), rgb_img_bgr)
+                cv2.imwrite(str(output_dir / f'{idx}_original.png'), rgb_img_uint8)
 
     
 
