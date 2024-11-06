@@ -14,6 +14,11 @@ import seaborn as sns
 import pandas as pd
 import sklearn
 import sys
+import cv2
+
+from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from pytorch_grad_cam.utils.image import show_cam_on_image
 
 import logging
 logger = logging.getLogger(__name__)
@@ -171,9 +176,9 @@ class ValidationDataset(Dataset):
         else:
             raise FileNotFoundError(f"Image {sample_id} not found in {directory}")
     
-class EfficientNetV2Classifier(nn.Module):
+class EfficientNetV2S(nn.Module):
     def __init__(self, input_channels, num_classes):
-        super(EfficientNetV2Classifier, self).__init__()
+        super(EfficientNetV2S, self).__init__()
 
         self.effnet = timm.create_model('tf_efficientnetv2_s', pretrained=True)
 
@@ -217,7 +222,7 @@ def train(args):
     logging.info(f'Number of channels in a sample: {num_channels}')
 
     # create model, loss function, and optimizer
-    model = EfficientNetV2Classifier(input_channels=num_channels, num_classes=2 if args.binary else len(args.classes_list)).to(args.device).to(args.device)
+    model = EfficientNetV2S(input_channels=num_channels, num_classes=2 if args.binary else len(args.classes_list)).to(args.device).to(args.device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -277,7 +282,6 @@ def train(args):
             plot_confusion_matrix(all_labels, all_predictions, classes, args.results_path)
 
 def evaluate(args):
-
     # create data loaders
     val_dataset = ValidationDataset(args)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
@@ -287,7 +291,7 @@ def evaluate(args):
     num_channels = sample[0].shape[1]
     logging.info(f'Number of channels in a sample: {num_channels}')
     
-    model = EfficientNetV2Classifier(input_channels=num_channels, num_classes=2 if args.binary else len(args.classes_list)).to(args.device).to(args.device)
+    model = EfficientNetV2S(input_channels=num_channels, num_classes=2 if args.binary else len(args.classes_list)).to(args.device).to(args.device)
     model.load_state_dict(torch.load(args.model_path, weights_only=True), strict=True)
     model.eval()
     
@@ -303,6 +307,60 @@ def evaluate(args):
     df = pd.DataFrame({'Index': val_dataset.labels_df['Index'], 'Predicted': all_predictions})
     Path(args.results_path).mkdir(parents=True, exist_ok=True)
     df.to_csv(Path(args.results_path) / 'predictions.csv', index=False)
+
+
+def grad_cam(args):
+    # Create data loaders
+    val_dataset = ValidationDataset(args)
+    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+
+    # Generate class dictionary
+    class_dict = {idx: category for idx, category in enumerate(args.classes_list)} if not args.binary else {0: category if 'coco' in category.lower() else 1 for category in args.classes_list}
+
+    # Get the number of channels in an image sample
+    num_channels = val_dataset[0][0].shape[0]
+    logging.info(f'Number of channels in a sample: {num_channels}')
+
+    # Select samples per class
+    samples_per_class = 5
+    samples_dict = {i: [] for i in range(len(args.classes_list))}
+
+    for image, label in val_dataloader:
+        image, label = image[0], label[0].item()
+        if len(samples_dict[label]) < samples_per_class:
+            samples_dict[label].append(image)
+        if all(len(samples) == samples_per_class for samples in samples_dict.values()):
+            break
+
+    # Load the model
+    model = EfficientNetV2S(input_channels=num_channels, num_classes=2 if args.binary else len(args.classes_list)).to(args.device)
+    target_layers = [model.effnet.blocks[-1]]
+
+    # Initialize GradCAM once
+    with GradCAMPlusPlus(model=model, target_layers=target_layers) as cam:
+        for label, images in samples_dict.items():
+            for idx, image in enumerate(images):
+                input_tensor = image.unsqueeze(0).to(args.device)
+                targets = [ClassifierOutputTarget(label)]
+
+                # Generate Grad-CAM heatmap
+                grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
+                
+                # Convert image for visualization
+                rgb_img = (image.cpu().numpy().squeeze().transpose((1, 2, 0)) * 0.5 + 0.5).clip(0, 1)
+                rgb_img_uint8 = (rgb_img * 255).astype(np.uint8)
+                rgb_img_bgr = cv2.cvtColor(rgb_img_uint8, cv2.COLOR_RGB2BGR)
+
+                # Create visualization
+                visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+                
+                # Save visualization and original image
+                output_dir = Path(args.results_path) / 'gradcam' / class_dict[label]
+                output_dir.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(output_dir / f'{idx}.png'), visualization)
+                cv2.imwrite(str(output_dir / f'{idx}_original.png'), rgb_img_bgr)
+
+    
 
 if __name__ == '__main__':
     
@@ -322,11 +380,14 @@ if __name__ == '__main__':
     parser.add_argument('--img_size', type=int, default=512, help='image size (default: 512)')
     parser.add_argument('--binary', action='store_true', help='flag to enable binary classification')
     parser.add_argument('--evaluate', action='store_true', help='flag to enable evaluation mode')
+    parser.add_argument('--grad_cam', action='store_true', help='flag to enable Grad-CAM mode')
     parser.add_argument('--num_workers', type=int, default=8, help='number of worker threads for data loading (default: 8)')
     parser.add_argument('--model_path', type=str, default='./results/best_model.pth', help='path to save trained model (default: ./results/model.pth)')
     args = parser.parse_args()
 
     if args.evaluate:
         evaluate(args)
+    elif args.grad_cam:
+        grad_cam(args)
     else:
         train(args)
