@@ -2,6 +2,7 @@
 ## training data
 
 train/
+
 ├── coco_image
 
 ├── dalle_image
