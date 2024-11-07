@@ -15,6 +15,7 @@ import pandas as pd
 import sklearn
 import sys
 import cv2
+import io
 
 from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
@@ -122,6 +123,10 @@ class ValidationDataset(Dataset):
         self.img_size = args.img_size
         self.binary = args.binary
         self.features = args.features_selected
+        self.compression_quality = args.compression_quality
+        self.crop_factor = args.crop_factor
+        self.blur_sigma = args.blur_sigma
+        self.noise_sigma = args.noise_sigma
         
         # Define transformations
         self.transform_rgb = self._get_transform_rgb()
@@ -143,11 +148,24 @@ class ValidationDataset(Dataset):
         return combined_image, label
 
     def _get_transform_rgb(self):
-        return transforms.Compose([
-            transforms.Resize((self.img_size, self.img_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
+        transforms_list = [transforms.Resize((self.img_size, self.img_size))]
+        
+        if self.compression_quality != 100:
+            transforms_list.append(transforms.Lambda(lambda img: self._apply_compression(img, self.compression_quality)))
+        if self.crop_factor != 1.0:
+            transforms_list.append(transforms.CenterCrop((int(self.img_size * self.crop_factor), int(self.img_size * self.crop_factor))))
+            transforms_list.append(transforms.Resize((self.img_size, self.img_size)))
+        if self.blur_sigma > 0:
+            transforms_list.append(transforms.GaussianBlur(kernel_size=(5, 5), sigma=self.blur_sigma))
+        
+        transforms_list.append(transforms.ToTensor())
+        
+        if self.noise_sigma > 0:
+            transforms_list.append(transforms.Lambda(lambda tensor: self._add_gaussian_noise(tensor, self.noise_sigma)))
+        
+        transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
+        
+        return transforms.Compose(transforms_list)
 
     def _get_transform_gray(self):
         return transforms.Compose([
@@ -175,6 +193,16 @@ class ValidationDataset(Dataset):
             return png_path
         else:
             raise FileNotFoundError(f"Image {sample_id} not found in {directory}")
+        
+    def _apply_compression(self, img, quality):
+        buffer = io.BytesIO()
+        img.save(buffer, format='JPEG', quality=quality)
+        buffer.seek(0)
+        return Image.open(buffer)
+
+    def _add_gaussian_noise(self, tensor, sigma):
+        noise = torch.randn(tensor.size()) * sigma
+        return tensor + noise
     
 class EfficientNetV2S(nn.Module):
     def __init__(self, input_channels, num_classes):
@@ -216,9 +244,8 @@ def train(args):
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     
-    # calculate total number of channels
-    sample = next(iter(train_dataloader))
-    num_channels = sample[0].shape[1]
+    # Get the number of channels in an image sample
+    num_channels = val_dataset[0][0].shape[0]
     logging.info(f'Number of channels in a sample: {num_channels}')
 
     # create model, loss function, and optimizer
@@ -286,9 +313,8 @@ def evaluate(args):
     val_dataset = ValidationDataset(args)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
-    # calculate total number of channels
-    sample = next(iter(val_dataset))
-    num_channels = sample[0].shape[1]
+    # Get the number of channels in an image sample
+    num_channels = val_dataset[0][0].shape[0]
     logging.info(f'Number of channels in a sample: {num_channels}')
     
     model = EfficientNetV2S(input_channels=num_channels, num_classes=2 if args.binary else len(args.classes_list)).to(args.device).to(args.device)
@@ -296,12 +322,21 @@ def evaluate(args):
     model.eval()
     
     all_predictions = []
+    total = 0
+    correct = 0
     with torch.no_grad():
         for images, labels in tqdm(val_dataloader, desc='Evaluating', ncols=75, leave=False):
             images, labels = images.to(args.device), labels.to(args.device)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             all_predictions.extend(predicted.cpu().numpy())
+
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+        
+        accuracy = 100 * correct / total
+        logging.info(f'Accuracy: {accuracy:.2f}%')
+
     
     # write predictions to .csv file
     df = pd.DataFrame({'Index': val_dataset.labels_df['Index'], 'Predicted': all_predictions})
@@ -383,6 +418,10 @@ if __name__ == '__main__':
     parser.add_argument('--grad_cam', action='store_true', help='flag to enable Grad-CAM mode')
     parser.add_argument('--num_workers', type=int, default=8, help='number of worker threads for data loading (default: 8)')
     parser.add_argument('--model_path', type=str, default='./results/best_model.pth', help='path to save trained model (default: ./results/model.pth)')
+    parser.add_argument('--compression_quality', type=int, default=100, help='JPEG compression quality (default: 100)')
+    parser.add_argument('--crop_factor', type=float, default=1.0, help='center crop factor (default: 1.0)')
+    parser.add_argument('--blur_sigma', type=float, default=0.0, help='Gaussian blur sigma (default: 0.0)')
+    parser.add_argument('--noise_sigma', type=float, default=0.0, help='Gaussian noise sigma (default: 0.0)')
     args = parser.parse_args()
 
     if args.evaluate:
