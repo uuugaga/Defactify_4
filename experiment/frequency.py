@@ -45,30 +45,24 @@ def apply_fft(image):
     
     # Apply FFT and normalize by the size
     fft_result = np.fft.fftshift(np.fft.fft2(image_array)) / (image_array.shape[0] * image_array.shape[1])
-    magnitude_spectrum = 500 * np.log(np.abs(fft_result) + 1)
-
-    # Save the FFT result as an image
-    magnitude_image = Image.fromarray(np.uint8(magnitude_spectrum))
-    # magnitude_image = magnitude_image.resize((64, 64), Image.LANCZOS)
-
+    fft_result = np.log(np.abs(fft_result) + 1)
     
-    return magnitude_image
+    return fft_result
 
-def process_image(args):
-    img_path, class_name, results_path = args
+def process_image(args, img_path):
     if img_path.suffix in ['.png', '.jpg']:
         image = Image.open(img_path).convert('RGB')
 
         # Apply the cross-difference filter
         result_image = cross_difference_filter(image)
-        result_image = result_image.resize((256, 256), Image.NEAREST)
+        result_image = result_image.resize((args.img_size, args.img_size), Image.NEAREST)
 
         # Apply FFT to the filtered image
         fft_image = apply_fft(result_image)
 
-        save_path = results_path / class_name / img_path.name
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        fft_image.save(save_path)
+        return fft_image
+    
+    return None
 
 def main(args):
     data_path = Path(args.data_path)
@@ -76,24 +70,27 @@ def main(args):
     results_path.mkdir(parents=True, exist_ok=True)
 
     # Create a list of tasks
-    tasks = []
     for class_name in data_path.iterdir():
         if class_name.is_dir():
-            for img_path in class_name.iterdir():
+            class_len = len(list(class_name.iterdir()))
+            average_fft_image = np.zeros((args.img_size, args.img_size), dtype=np.float32)
+            for img_path in tqdm(class_name.iterdir(), desc=f'Processing {class_name.name}', total=class_len, ncols=75):
                 if img_path.suffix in ['.png', '.jpg']:
-                    tasks.append((img_path, class_name.name, results_path))
+                    fft_image = process_image(args, img_path)
+                    average_fft_image += fft_image / class_len
 
-    # Process images in parallel
-    with ProcessPoolExecutor() as executor:
-        list(tqdm(executor.map(process_image, tasks), total=len(tasks), desc='Processing Images', ncols=75))
+            average_fft_image = 1000 * average_fft_image
+            average_fft_image = np.clip(average_fft_image, 0, 255)
+            average_fft_image = Image.fromarray(np.uint8(average_fft_image))
+            average_fft_image.save(results_path / f'{class_name.name}_average_fft.png')
 
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='AI Model Experiment Controller')
-    parser.add_argument('--data_path', type=str, default='./data/train', help='path to training dataset (default: ../data/train)')
+    parser.add_argument('--data_path', type=str, default='../data/train', help='path to training dataset (default: ../data/train)')
     parser.add_argument('--results_path', type=str, default='./results', help='path to save experiment results (default: ./results)')
-    parser.add_argument('--img_size', type=int, default=512, help='image size (default: 512)')
+    parser.add_argument('--img_size', type=int, default=256, help='image size (default: 256)')
 
     args = parser.parse_args()
 

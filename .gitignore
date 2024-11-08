@@ -8,5 +8,5 @@ __pycache__/
 
 /base/results/*
 
-/experiments/*
+/experiment/results/*
 
