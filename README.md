@@ -11,3 +11,9 @@ python classifier.py --features_selected rgb --evaluate
 ```
 python classifier.py --features_selected rgb --grad_cam 
 ```
+
+# Inference
+
+```
+python classidier.py --features_selected rgb --inference
+```
