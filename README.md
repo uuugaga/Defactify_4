@@ -15,5 +15,5 @@ python classifier.py --features_selected rgb --grad_cam
 # Inference
 
 ```
-python classidier.py --features_selected rgb --inference
+python classifier.py --features_selected rgb --inference
 ```
