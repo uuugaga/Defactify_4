@@ -26,7 +26,7 @@ for i, example in enumerate(tqdm(ds["train"])):
     caption = example["caption"]
 
     # Create a filename for the image
-    img_filename = f"image_{i}.jpg"
+    img_filename = f"image_{i}.png"
     img_path = os.path.join(base_dir, img_filename)
 
     # Save the image to the file system
