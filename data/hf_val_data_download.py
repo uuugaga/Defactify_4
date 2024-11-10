@@ -2,6 +2,7 @@ import os
 from datasets import load_dataset
 from PIL import Image
 import pandas as pd
+from tqdm import tqdm
 
 # Load the dataset
 ds = load_dataset("NasrinImp/Defactify4_Validation")
@@ -17,7 +18,7 @@ os.makedirs(base_dir, exist_ok=True)
 captions_data = []
 
 # Loop through each example in the dataset
-for i, example in enumerate(ds['train']):
+for i, example in enumerate(tqdm(ds['train'])):
     # Extract the image and caption
     img = example['image']  # Assuming the image column is named 'image'
     caption = example['caption']
@@ -32,9 +33,9 @@ for i, example in enumerate(ds['train']):
     # # Save the caption data for later use
     # captions_data.append({'Index': i, 'Caption': caption})
     
-    # Print progress every 50 images
-    if (i + 1) % 100 == 0:
-        print(f"Saved {i + 1} images...")
+    # # Print progress every 50 images
+    # if (i + 1) % 100 == 0:
+    #     print(f"Saved {i + 1} images...")
 
 # # Save the captions data to an Excel file
 # captions_df = pd.DataFrame(captions_data)
