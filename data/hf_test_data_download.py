@@ -2,7 +2,7 @@ import os
 from datasets import load_dataset
 from PIL import Image
 import pandas as pd
-from tdqm import tqdm
+from tqdm import tqdm
 
 # Load the dataset
 ds = load_dataset("NasrinImp/Defactify4_Test")
