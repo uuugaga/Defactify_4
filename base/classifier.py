@@ -204,6 +204,96 @@ class ValidationDataset(Dataset):
         noise = torch.randn(tensor.size()) * sigma
         return tensor + noise
     
+class InferenceDataset(Dataset):
+    def __init__(self, args):
+        self.features_dir = Path(args.inference_features_path)
+        self.original_images_dir = Path(args.inference_path)
+        self.labels_file = Path(args.labels_file)
+        self.img_size = args.img_size
+        self.binary = args.binary
+        self.features = args.features_selected
+        self.compression_quality = args.compression_quality
+        self.crop_factor = args.crop_factor
+        self.blur_sigma = args.blur_sigma
+        self.noise_sigma = args.noise_sigma
+        
+        # Define transformations
+        self.transform_rgb = self._get_transform_rgb()
+        self.transform_gray = self._get_transform_gray()
+
+        # Load labels from .xlsx file
+        self.labels_df = pd.read_excel(self.labels_file)
+        logging.info(f"Loaded {len(self.labels_df)} validation labels from {self.labels_file}")
+
+    def __len__(self):
+        return len(list(self.original_images_dir.glob('*.[jp][np][g]')))
+
+    def __getitem__(self, idx):
+        row = self.labels_df.iloc[idx]
+        sample_id = row['Index']
+        # label = row['Label_A'] if self.binary else row['Label_B']
+        images = [self._load_image(sample_id, feature) for feature in self.features]
+        combined_image = torch.cat(images, dim=0)
+        return combined_image, sample_id
+
+    def _get_transform_rgb(self):
+        transforms_list = [transforms.Resize((self.img_size, self.img_size))]
+        
+        if self.compression_quality != 100:
+            transforms_list.append(transforms.Lambda(lambda img: self._apply_compression(img, self.compression_quality)))
+        if self.crop_factor != 1.0:
+            transforms_list.append(transforms.CenterCrop((int(self.img_size * self.crop_factor), int(self.img_size * self.crop_factor))))
+            transforms_list.append(transforms.Resize((self.img_size, self.img_size)))
+        if self.blur_sigma > 0:
+            transforms_list.append(transforms.GaussianBlur(kernel_size=(5, 5), sigma=self.blur_sigma))
+        
+        transforms_list.append(transforms.ToTensor())
+        
+        if self.noise_sigma > 0:
+            transforms_list.append(transforms.Lambda(lambda tensor: self._add_gaussian_noise(tensor, self.noise_sigma)))
+        
+        transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
+        
+        return transforms.Compose(transforms_list)
+
+    def _get_transform_gray(self):
+        return transforms.Compose([
+            transforms.Resize((self.img_size, self.img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+
+    def _load_image(self, sample_id, feature):
+        if feature == "rgb":
+            image_path = self._get_image_path(sample_id, self.original_images_dir)
+            image = Image.open(image_path).convert('RGB')
+            return self.transform_rgb(image)
+        else:
+            image_path = self._get_image_path(sample_id, self.features_dir / feature)
+            image = Image.open(image_path).convert('L')
+            return self.transform_gray(image)
+
+    def _get_image_path(self, sample_id, directory):
+        jpg_path = directory / f"{sample_id}.jpg"
+        png_path = directory / f"{sample_id}.png"
+        if jpg_path.exists():
+            return jpg_path
+        elif png_path.exists():
+            return png_path
+        else:
+            raise FileNotFoundError(f"Image {sample_id} not found in {directory}")
+        
+    def _apply_compression(self, img, quality):
+        buffer = io.BytesIO()
+        img.save(buffer, format='JPEG', quality=quality)
+        buffer.seek(0)
+        return Image.open(buffer)
+
+    def _add_gaussian_noise(self, tensor, sigma):
+        noise = torch.randn(tensor.size()) * sigma
+        return tensor + noise
+
+
 class EfficientNetV2S(nn.Module):
     def __init__(self, input_channels, num_classes):
         super(EfficientNetV2S, self).__init__()
@@ -343,6 +433,32 @@ def evaluate(args):
     Path(args.results_path).mkdir(parents=True, exist_ok=True)
     df.to_csv(Path(args.results_path) / 'predictions.csv', index=False)
 
+def inference(args):
+    test_dataset = InferenceDataset(args)
+    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+
+    # Get the number of channels in an image sample
+    num_channels = test_dataset[0][0].shape[0]
+    logging.info(f'Number of channels in a sample: {num_channels}')
+
+    model = EfficientNetV2S(input_channels=num_channels, num_classes=2 if args.binary else len(args.classes_list)).to(args.device)
+    model.load_state_dict(torch.load(args.model_path, weights_only=True), strict=True)
+    model.eval()
+
+    all_predictions = []
+    with torch.no_grad():
+        for images, _ in tqdm(test_dataloader, desc='Inference', ncols=75, leave=False):
+            images = images.to(args.device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            all_predictions.extend(predicted.cpu().numpy())
+
+    # write predictions to .csv file
+    task1_predictions = [0 if pred == 0 else 1 for pred in all_predictions]
+    df = pd.DataFrame({'Index': test_dataset.labels_df['Index'], 'caption':test_dataset.labels_df['Caption'],  'Label_A': task1_predictions,'Label_B': all_predictions})
+    Path(args.results_path).mkdir(parents=True, exist_ok=True)
+    df.to_csv(Path(args.results_path) / 'inference_predictions.csv', index=False)
+
 
 def grad_cam(args):
     # Create data loaders
@@ -415,6 +531,10 @@ if __name__ == '__main__':
     parser.add_argument('--img_size', type=int, default=512, help='image size (default: 512)')
     parser.add_argument('--binary', action='store_true', help='flag to enable binary classification')
     parser.add_argument('--evaluate', action='store_true', help='flag to enable evaluation mode')
+    parser.add_argument('--evaluate_path', default='../data/val', help='path to evaluate images dataset (default: ../data/val)')
+    parser.add_argument('--inference', action='store_true', help='flag to enable inference mode')
+    parser.add_argument('--inference_path', default='../data/test', help='path to inference images dataset (default: ../data/test)')
+    parser.add_argument('--inference_features_path', default='../data/test_results', help='path to features dataset (default: ../data/features)')
     parser.add_argument('--grad_cam', action='store_true', help='flag to enable Grad-CAM mode')
     parser.add_argument('--num_workers', type=int, default=8, help='number of worker threads for data loading (default: 8)')
     parser.add_argument('--model_path', type=str, default='./results/best_model.pth', help='path to save trained model (default: ./results/model.pth)')
@@ -426,6 +546,8 @@ if __name__ == '__main__':
 
     if args.evaluate:
         evaluate(args)
+    elif args.inference:
+        inference(args)
     elif args.grad_cam:
         grad_cam(args)
     else:
