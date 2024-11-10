@@ -2,6 +2,7 @@ import os
 from datasets import load_dataset
 from PIL import Image
 import pandas as pd
+from tqdm import tqdm
 
 ds = load_dataset("NasrinImp/Defactify4_Train")
 
@@ -14,7 +15,7 @@ for field in image_fields:
 
 captions_data = []
 
-for i, example in enumerate(ds['train']):
+for i, example in enumerate(tqdm(ds['train'])):
     caption = example['caption']
     for field in image_fields:
         img = example[field]
