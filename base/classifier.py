@@ -455,7 +455,7 @@ def inference(args):
 
     # write predictions to .csv file
     task1_predictions = [0 if pred == 0 else 1 for pred in all_predictions]
-    df = pd.DataFrame({'Index': test_dataset.labels_df['Index'], 'caption':test_dataset.labels_df['Caption'],  'Label_A': task1_predictions,'Label_B': all_predictions})
+    df = pd.DataFrame({'Index': test_dataset.labels_df['Index'], 'Caption':test_dataset.labels_df['Caption'],  'Label_A': task1_predictions,'Label_B': all_predictions})
     Path(args.results_path).mkdir(parents=True, exist_ok=True)
     df.to_csv(Path(args.results_path) / 'inference_predictions.csv', index=False)
     df.to_excel(Path(args.results_path) / 'inference_predictions.xlsx', index=False)
