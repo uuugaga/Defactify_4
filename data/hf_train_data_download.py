@@ -23,8 +23,8 @@ for i, example in enumerate(tqdm(ds['train'])):
         img_path = os.path.join(base_dir, field, img_filename)
         img.save(img_path)
     # captions_data.append({'Index': i, 'Caption': caption})
-    if (i + 1) % 100 == 0:
-        print(f"Saved {i + 1} images...")
+    # if (i + 1) % 100 == 0:
+    #     print(f"Saved {i + 1} images...")
 
 # captions_df = pd.DataFrame(captions_data)
 # captions_df.to_excel(os.path.join(base_dir, 'captions.xlsx'), index=False)
