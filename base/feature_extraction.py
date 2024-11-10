@@ -65,11 +65,24 @@ def feature_extraction(args):
     results_path.mkdir(parents=True, exist_ok=True)
     print(f"Results will be saved in {results_path}")
 
-    transform = transforms.Compose([
-        transforms.Resize((args.img_size, args.img_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    ])
+    transforms_list = [transforms.Resize((args.img_size, args.img_size))]
+    
+    if args.compression_quality != 100:
+        transforms_list.append(transforms.Lambda(lambda img: args._apply_compression(img, args.compression_quality)))
+    if args.crop_factor != 1.0:
+        transforms_list.append(transforms.CenterCrop((int(args.img_size * args.crop_factor), int(args.img_size * args.crop_factor))))
+        transforms_list.append(transforms.Resize((args.img_size, args.img_size)))
+    if args.blur_sigma > 0:
+        transforms_list.append(transforms.GaussianBlur(kernel_size=(5, 5), sigma=args.blur_sigma))
+    
+    transforms_list.append(transforms.ToTensor())
+    
+    if args.noise_sigma > 0:
+        transforms_list.append(transforms.Lambda(lambda tensor: args._add_gaussian_noise(tensor, args.noise_sigma)))
+    
+    transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
+    
+    transform = transforms.Compose(transforms_list)
 
     # Read data path folder
     if args.flat_structure:
@@ -106,6 +119,10 @@ if __name__ == '__main__':
     parser.add_argument('--frequency', action='store_true', help='flag to enable frequency generation')
     parser.add_argument('--latent', action='store_true', help='flag to enable latent generation')
     parser.add_argument('--flat_structure', action='store_true', help='flag to indicate flat folder structure without classes')
+    parser.add_argument('--compression_quality', type=int, default=100, help='JPEG compression quality (default: 100)')
+    parser.add_argument('--crop_factor', type=float, default=1.0, help='center crop factor (default: 1.0)')
+    parser.add_argument('--blur_sigma', type=float, default=0.0, help='Gaussian blur sigma (default: 0.0)')
+    parser.add_argument('--noise_sigma', type=float, default=0.0, help='Gaussian noise sigma (default: 0.0)')
     args = parser.parse_args()
 
     feature_extraction(args)
