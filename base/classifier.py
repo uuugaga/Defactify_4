@@ -458,6 +458,7 @@ def inference(args):
     df = pd.DataFrame({'Index': test_dataset.labels_df['Index'], 'caption':test_dataset.labels_df['Caption'],  'Label_A': task1_predictions,'Label_B': all_predictions})
     Path(args.results_path).mkdir(parents=True, exist_ok=True)
     df.to_csv(Path(args.results_path) / 'inference_predictions.csv', index=False)
+    df.to_excel(Path(args.results_path) / 'inference_predictions.xlsx', index=False)
 
 
 def grad_cam(args):
