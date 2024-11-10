@@ -13,7 +13,7 @@ dataset_dir = os.path.dirname(
 )  # Get current script directory (assuming script is in the same directory as the dataset)
 
 # Create directories for saving images and captions inside the dataset's directory
-base_dir = os.path.join(dataset_dir, "Test")
+base_dir = os.path.join(dataset_dir, "test")
 os.makedirs(base_dir, exist_ok=True)
 
 # List to hold the captions and their indices
