@@ -35,7 +35,7 @@ def process_image(img, transform, pipeline, args, results_path, subfolder=""):
             result_path.parent.mkdir(parents=True, exist_ok=True)
             Image.fromarray(reconstructed_img_np).save(result_path)
 
-    if args.reconstruction and args.error:
+    if args.error:
         error_map = torch.abs(img_transform - reconsturcted_img)
         error_map_np = latent_to_np(error_map)
         error_map_path = results_path / subfolder / f'error' / f'{Path(img.filename).stem}.png'
