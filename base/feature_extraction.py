@@ -25,11 +25,11 @@ def latent_to_np(img):
 
 def process_image(img, transform, pipeline, args, results_path, subfolder=""):
     img_transform = transform(img).unsqueeze(0).to(args.device)
-
-    if args.reconstruction:
-        with torch.no_grad():
-            latent = pipeline.vae.encode(img_transform).latent_dist.sample()
-            reconsturcted_img = pipeline.vae.decode(latent).sample
+    
+    with torch.no_grad():
+        latent = pipeline.vae.encode(img_transform).latent_dist.sample()
+        reconsturcted_img = pipeline.vae.decode(latent).sample
+        if args.reconstruction:
             reconstructed_img_np = latent_to_np(reconsturcted_img)
             result_path = results_path / subfolder / f'reconstruction' / f'{Path(img.filename).stem}.png'
             result_path.parent.mkdir(parents=True, exist_ok=True)
