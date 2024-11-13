@@ -7,6 +7,7 @@ __pycache__/
 !/data/README.md
 
 /base/results/*
+/base/*.sh
 
 /experiment/results/*
 

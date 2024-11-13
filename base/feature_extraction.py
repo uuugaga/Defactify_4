@@ -5,8 +5,8 @@ from torchvision import transforms
 from tqdm import tqdm
 from PIL import Image
 import torch
-import torch.nn.functional as F
 import numpy as np
+import io
 
 def latent_to_np(img):
     return (
@@ -58,6 +58,12 @@ def process_image(img, transform, pipeline, args, results_path, subfolder=""):
 
 def feature_extraction(args):
 
+    def _apply_compression(img, quality):
+        buffer = io.BytesIO()
+        img.save(buffer, format='JPEG', quality=quality)
+        buffer.seek(0)
+        return Image.open(buffer)
+
     pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(args.model_id).to(args.device)
 
     data_path = Path(args.data_path)
@@ -68,7 +74,7 @@ def feature_extraction(args):
     transforms_list = [transforms.Resize((args.img_size, args.img_size))]
     
     if args.compression_quality != 100:
-        transforms_list.append(transforms.Lambda(lambda img: args._apply_compression(img, args.compression_quality)))
+        transforms_list.append(transforms.Lambda(lambda img: _apply_compression(img, args.compression_quality)))
     if args.crop_factor != 1.0:
         transforms_list.append(transforms.CenterCrop((int(args.img_size * args.crop_factor), int(args.img_size * args.crop_factor))))
         transforms_list.append(transforms.Resize((args.img_size, args.img_size)))
