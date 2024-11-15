@@ -63,6 +63,10 @@ def feature_extraction(args):
         img.save(buffer, format='JPEG', quality=quality)
         buffer.seek(0)
         return Image.open(buffer)
+    
+    def _add_gaussian_noise(self, tensor, sigma):
+        noise = torch.randn(tensor.size()) * sigma
+        return tensor + noise
 
     pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(args.model_id).to(args.device)
 
@@ -84,7 +88,7 @@ def feature_extraction(args):
     transforms_list.append(transforms.ToTensor())
     
     if args.noise_sigma > 0:
-        transforms_list.append(transforms.Lambda(lambda tensor: args._add_gaussian_noise(tensor, args.noise_sigma)))
+        transforms_list.append(transforms.Lambda(lambda tensor: _add_gaussian_noise(tensor, args.noise_sigma)))
     
     transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
     
