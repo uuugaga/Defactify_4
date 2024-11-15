@@ -64,7 +64,7 @@ def feature_extraction(args):
         buffer.seek(0)
         return Image.open(buffer)
     
-    def _add_gaussian_noise(self, tensor, sigma):
+    def _add_gaussian_noise(tensor, sigma):
         noise = torch.randn(tensor.size()) * sigma
         return tensor + noise
 
