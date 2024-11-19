@@ -23,6 +23,21 @@ def latent_to_np(img):
         .numpy()
     )
 
+def transform_to_original(img_transform):
+    mean = [0.5, 0.5, 0.5]
+    std = [0.5, 0.5, 0.5]
+    denormalize = transforms.Normalize(
+        mean=[-m / s for m, s in zip(mean, std)],
+        std=[1 / s for s in std]
+    )
+
+    img_transform = denormalize(img_transform)
+    img_transform = torch.clamp(img_transform, 0.0, 1.0)
+    img_np = img_transform.squeeze(0).cpu().numpy()
+    img_np = (img_np * 255).astype(np.uint8)
+
+    return img_np
+
 def process_image(img, transform, pipeline, args, results_path, subfolder=""):
     img_transform = transform(img).unsqueeze(0).to(args.device)
     
@@ -48,7 +63,9 @@ def process_image(img, transform, pipeline, args, results_path, subfolder=""):
         torch.save(latent, latent_path)
 
     if args.frequency:
-        f = np.fft.fft2(np.array(img.resize((args.img_size, args.img_size)).convert("L")))
+        img_transform_np = transform_to_original(img_transform)
+        gray_img_np = np.mean(img_transform_np, axis=0)
+        f = np.fft.fft2(gray_img_np)
         fshift = np.fft.fftshift(f)
         magnitude_spectrum = 20 * np.log(np.abs(fshift + 1e-8))
         magnitude_spectrum_img = Image.fromarray(magnitude_spectrum.astype(np.uint8))
