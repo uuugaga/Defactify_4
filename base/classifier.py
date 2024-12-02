@@ -16,6 +16,7 @@ import sklearn
 import sys
 import cv2
 import io
+import random
 
 from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
@@ -25,6 +26,17 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, handlers=[logging.StreamHandler(sys.stdout)])
 
+
+def _apply_compression(img, quality):
+    buffer = io.BytesIO()
+    img.save(buffer, format='JPEG', quality=quality)
+    buffer.seek(0)
+    return Image.open(buffer)
+
+def _add_gaussian_noise(tensor, sigma):
+    noise = torch.randn(tensor.size()) * sigma
+    return tensor + noise
+
 class MultiFeatureDataset(Dataset):
     def __init__(self, args):
         self.features_dir = Path(args.train_features_path)
@@ -33,6 +45,10 @@ class MultiFeatureDataset(Dataset):
         self.categories = args.classes_list
         self.img_size = args.img_size
         self.binary = args.binary
+        self.compression_quality = args.compression_quality
+        self.crop_factor = args.crop_factor
+        self.blur_sigma = args.blur_sigma
+        self.noise_sigma = args.noise_sigma
         
         # Define transformations
         self.transform_rgb = self._get_transform_rgb()
@@ -56,11 +72,25 @@ class MultiFeatureDataset(Dataset):
         return combined_image, self.label_dict[category]
 
     def _get_transform_rgb(self):
-        return transforms.Compose([
-            transforms.Resize((self.img_size, self.img_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
+        transforms_list = [transforms.Resize((self.img_size, self.img_size))]
+        
+        if self.compression_quality != 100:
+            transforms_list.append(transforms.Lambda(lambda img: _apply_compression(img, self.compression_quality)))
+        if self.crop_factor != 1.0:
+            transforms_list.append(transforms.CenterCrop((int(self.img_size * self.crop_factor), int(self.img_size * self.crop_factor))))
+            transforms_list.append(transforms.Resize((self.img_size, self.img_size)))
+        if self.blur_sigma > 0:
+            transforms_list.append(transforms.GaussianBlur(kernel_size=(5, 5), sigma=self.blur_sigma))
+        
+        transforms_list.append(transforms.ToTensor())
+        
+        if self.noise_sigma > 0:
+            transforms_list.append(transforms.Lambda(lambda tensor: _add_gaussian_noise(tensor, random.uniform(0, self.noise_sigma))))
+
+        transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
+        
+        return transforms.Compose(transforms_list)
+
 
     def _get_transform_gray(self):
         return transforms.Compose([
@@ -107,7 +137,8 @@ class MultiFeatureDataset(Dataset):
         try:
             if Path(self.original_images_dir / category) in file_path.parents:
                 image = Image.open(file_path).convert('RGB')
-                return self.transform_rgb(image)
+                transform = self._get_transform_rgb()
+                return transform(image)
             else:
                 image = Image.open(file_path).convert('L')
                 return self.transform_gray(image)
@@ -151,7 +182,7 @@ class ValidationDataset(Dataset):
         transforms_list = [transforms.Resize((self.img_size, self.img_size))]
         
         if self.compression_quality != 100:
-            transforms_list.append(transforms.Lambda(lambda img: self._apply_compression(img, self.compression_quality)))
+            transforms_list.append(transforms.Lambda(lambda img: _apply_compression(img, self.compression_quality)))
         if self.crop_factor != 1.0:
             transforms_list.append(transforms.CenterCrop((int(self.img_size * self.crop_factor), int(self.img_size * self.crop_factor))))
             transforms_list.append(transforms.Resize((self.img_size, self.img_size)))
@@ -161,7 +192,7 @@ class ValidationDataset(Dataset):
         transforms_list.append(transforms.ToTensor())
         
         if self.noise_sigma > 0:
-            transforms_list.append(transforms.Lambda(lambda tensor: self._add_gaussian_noise(tensor, self.noise_sigma)))
+            transforms_list.append(transforms.Lambda(lambda tensor: _add_gaussian_noise(tensor, self.noise_sigma)))
         
         transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
         
@@ -193,16 +224,6 @@ class ValidationDataset(Dataset):
             return png_path
         else:
             raise FileNotFoundError(f"Image {sample_id} not found in {directory}")
-        
-    def _apply_compression(self, img, quality):
-        buffer = io.BytesIO()
-        img.save(buffer, format='JPEG', quality=quality)
-        buffer.seek(0)
-        return Image.open(buffer)
-
-    def _add_gaussian_noise(self, tensor, sigma):
-        noise = torch.randn(tensor.size()) * sigma
-        return tensor + noise
     
 class InferenceDataset(Dataset):
     def __init__(self, args):
@@ -223,7 +244,7 @@ class InferenceDataset(Dataset):
 
         # Load labels from .xlsx file
         self.labels_df = pd.read_excel(self.labels_file)
-        logging.info(f"Loaded {len(self.labels_df)} validation labels from {self.labels_file}")
+        logging.info(f"Loaded {len(self.labels_df)} testing labels from {self.labels_file}")
 
     def __len__(self):
         return len(list(self.original_images_dir.glob('*.[jp][np][g]')))
@@ -240,7 +261,7 @@ class InferenceDataset(Dataset):
         transforms_list = [transforms.Resize((self.img_size, self.img_size))]
         
         if self.compression_quality != 100:
-            transforms_list.append(transforms.Lambda(lambda img: self._apply_compression(img, self.compression_quality)))
+            transforms_list.append(transforms.Lambda(lambda img: _apply_compression(img, self.compression_quality)))
         if self.crop_factor != 1.0:
             transforms_list.append(transforms.CenterCrop((int(self.img_size * self.crop_factor), int(self.img_size * self.crop_factor))))
             transforms_list.append(transforms.Resize((self.img_size, self.img_size)))
@@ -250,7 +271,7 @@ class InferenceDataset(Dataset):
         transforms_list.append(transforms.ToTensor())
         
         if self.noise_sigma > 0:
-            transforms_list.append(transforms.Lambda(lambda tensor: self._add_gaussian_noise(tensor, self.noise_sigma)))
+            transforms_list.append(transforms.Lambda(lambda tensor: _add_gaussian_noise(tensor, self.noise_sigma)))
         
         transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
         
@@ -282,30 +303,19 @@ class InferenceDataset(Dataset):
             return png_path
         else:
             raise FileNotFoundError(f"Image {sample_id} not found in {directory}")
-        
-    def _apply_compression(self, img, quality):
-        buffer = io.BytesIO()
-        img.save(buffer, format='JPEG', quality=quality)
-        buffer.seek(0)
-        return Image.open(buffer)
-
-    def _add_gaussian_noise(self, tensor, sigma):
-        noise = torch.randn(tensor.size()) * sigma
-        return tensor + noise
 
 
 class EfficientNetV2S(nn.Module):
     def __init__(self, input_channels, num_classes):
         super(EfficientNetV2S, self).__init__()
 
-        self.effnet = timm.create_model('tf_efficientnetv2_s', pretrained=True)
+        self.effnet = timm.create_model('tf_efficientnetv2_s.in21k', pretrained=True)
 
         self.effnet.conv_stem = nn.Conv2d(
             in_channels=input_channels,  # Set the number of input channels (e.g., 5 for RGB + depth + infrared)
             out_channels=24,
             kernel_size=3,
             stride=2,
-            padding=1,
             bias=False
         )
     
