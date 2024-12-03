@@ -288,6 +288,9 @@ class InferenceDataset(Dataset):
         if feature == "rgb":
             image_path = self._get_image_path(sample_id, self.original_images_dir)
             image = Image.open(image_path).convert('RGB')
+            # image = np.array(image)
+            # image = image[..., ::-1]
+            # image = Image.fromarray(image)
             return self.transform_rgb(image)
         else:
             image_path = self._get_image_path(sample_id, self.features_dir / feature)
@@ -309,13 +312,14 @@ class EfficientNetV2S(nn.Module):
     def __init__(self, input_channels, num_classes):
         super(EfficientNetV2S, self).__init__()
 
-        self.effnet = timm.create_model('tf_efficientnetv2_s.in21k', pretrained=True)
+        self.effnet = timm.create_model('efficientnet_b0.ra_in1k', pretrained=True)
 
         self.effnet.conv_stem = nn.Conv2d(
             in_channels=input_channels,  # Set the number of input channels (e.g., 5 for RGB + depth + infrared)
-            out_channels=24,
+            out_channels=32,
             kernel_size=3,
             stride=2,
+            padding=1,
             bias=False
         )
     
