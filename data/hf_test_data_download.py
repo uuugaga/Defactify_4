@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 
 # Load the dataset
-ds = load_dataset("NasrinImp/Final_defactify_test")
+ds = load_dataset("NasrinImp/Final_defactify_test_new")
 
 # Get the directory where the dataset is saved
 dataset_dir = os.path.dirname(

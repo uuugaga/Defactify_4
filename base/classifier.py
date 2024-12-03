@@ -75,17 +75,21 @@ class MultiFeatureDataset(Dataset):
         transforms_list = [transforms.Resize((self.img_size, self.img_size))]
         
         if self.compression_quality != 100:
-            transforms_list.append(transforms.Lambda(lambda img: _apply_compression(img, self.compression_quality)))
+            compression_quality = int(random.uniform(self.compression_quality, 100))
+            transforms_list.append(transforms.Lambda(lambda img: _apply_compression(img, compression_quality)))
         if self.crop_factor != 1.0:
-            transforms_list.append(transforms.CenterCrop((int(self.img_size * self.crop_factor), int(self.img_size * self.crop_factor))))
+            crop_factor = random.uniform(self.crop_factor, 1.0)
+            transforms_list.append(transforms.CenterCrop((int(self.img_size * crop_factor), int(self.img_size * crop_factor))))
             transforms_list.append(transforms.Resize((self.img_size, self.img_size)))
         if self.blur_sigma > 0:
-            transforms_list.append(transforms.GaussianBlur(kernel_size=(5, 5), sigma=self.blur_sigma))
+            blur_sigma = random.uniform(0, self.blur_sigma)
+            transforms_list.append(transforms.GaussianBlur(kernel_size=(5, 5), sigma=blur_sigma))
         
         transforms_list.append(transforms.ToTensor())
         
         if self.noise_sigma > 0:
-            transforms_list.append(transforms.Lambda(lambda tensor: _add_gaussian_noise(tensor, random.uniform(0, self.noise_sigma))))
+            noise_sigma = random.uniform(0, self.noise_sigma)
+            transforms_list.append(transforms.Lambda(lambda tensor: _add_gaussian_noise(tensor, noise_sigma)))
 
         transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
         
@@ -252,27 +256,13 @@ class InferenceDataset(Dataset):
     def __getitem__(self, idx):
         row = self.labels_df.iloc[idx]
         sample_id = row['Index']
-        # label = row['Label_A'] if self.binary else row['Label_B']
         images = [self._load_image(sample_id, feature) for feature in self.features]
         combined_image = torch.cat(images, dim=0)
         return combined_image, sample_id
 
     def _get_transform_rgb(self):
-        transforms_list = [transforms.Resize((self.img_size, self.img_size))]
-        
-        if self.compression_quality != 100:
-            transforms_list.append(transforms.Lambda(lambda img: _apply_compression(img, self.compression_quality)))
-        if self.crop_factor != 1.0:
-            transforms_list.append(transforms.CenterCrop((int(self.img_size * self.crop_factor), int(self.img_size * self.crop_factor))))
-            transforms_list.append(transforms.Resize((self.img_size, self.img_size)))
-        if self.blur_sigma > 0:
-            transforms_list.append(transforms.GaussianBlur(kernel_size=(5, 5), sigma=self.blur_sigma))
-        
-        transforms_list.append(transforms.ToTensor())
-        
-        if self.noise_sigma > 0:
-            transforms_list.append(transforms.Lambda(lambda tensor: _add_gaussian_noise(tensor, self.noise_sigma)))
-        
+        transforms_list = [transforms.Resize((self.img_size, self.img_size))] 
+        transforms_list.append(transforms.ToTensor())    
         transforms_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
         
         return transforms.Compose(transforms_list)
