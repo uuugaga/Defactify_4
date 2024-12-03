@@ -17,13 +17,13 @@ def process_image(img, transform, args, results_path, subfolder=""):
         crop_path = results_path / subfolder / f'{Path(img.filename).stem}.png'
         crop_path.parent.mkdir(parents=True, exist_ok=True)
         # center crop img of 0.8 size
-        img_size = img.size[-1]
-        crop_size = int(img_size * 0.8)
-        crop_img = F.center_crop(img, crop_size)
-        # crop_img_transform = crop_img.resize((args.img_size, args.img_size))
-        crop_img.save(crop_path)
+        width, height = img.size
+        new_width = int(width * 0.8)
+        new_height = int(height * 0.8)
+        crop_image = F.center_crop(img, (new_height, new_width))
+        crop_image.save(crop_path)
     
-    if args.noise:
+    elif args.noise:
         noise_path = results_path / subfolder / f'{Path(img.filename).stem}.png'
         noise_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -43,7 +43,7 @@ def process_image(img, transform, args, results_path, subfolder=""):
     
         noisy_img.save(noise_path)
     
-    if args.compression:
+    elif args.compression:
         compression_path = results_path / subfolder / f'{Path(img.filename).stem}.png'
         compression_path.parent.mkdir(parents=True, exist_ok=True)
         # compress img
