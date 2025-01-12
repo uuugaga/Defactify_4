@@ -1,0 +1,5 @@
+python run.py --train --train_real coco --train_target sd21 --train_set 1 --n_epoch 120 --lr 0.0001 --Use_Attack --epsilon 0.1 --n_shots 7000 --save_path result
+python run.py --train --train_real coco --train_target sdxl --train_set 2 --n_epoch 120 --lr 0.0001 --Use_Attack --epsilon 0.1 --n_shots 7000 --save_path result
+python run.py --train --train_real coco --train_target sd3 --train_set 3 --n_epoch 120 --lr 0.0001 --Use_Attack --epsilon 0.1 --n_shots 7000 --save_path result
+python run.py --train --train_real coco --train_target dalle --train_set 4 --n_epoch 120 --lr 0.0001 --Use_Attack --epsilon 0.1 --n_shots 7000 --save_path result
+python run.py --train --train_real coco --train_target midjourney --train_set 5 --n_epoch 120 --lr 0.0001 --Use_Attack --epsilon 0.1 --n_shots 7000 --save_path result
